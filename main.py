@@ -1,152 +1,127 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import json
-from datetime import datetime
 
-DATA_FILE = 'expenses.json'
+BOOKS_FILE = 'books.json'
 
 def load_data():
     try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+        with open(BOOKS_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except FileNotFoundError:
+    except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 def save_data(data):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+    with open(BOOKS_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def add_expense():
-    amount = entry_amount.get()
-    category = combo_category.get()
-    date = entry_date.get()
+def add_book():
+    title = entry_title.get().strip()
+    author = entry_author.get().strip()
+    genre = entry_genre.get().strip()
+    pages = entry_pages.get().strip()
 
-    if not amount.replace('.', '', 1).isdigit() or float(amount) <= 0:
-        messagebox.showerror('Ошибка', 'Сумма должна быть положительным числом')
+    # Проверка на пустые поля
+    if not (title and author and genre and pages):
+        messagebox.showwarning("Ошибка", "Все поля должны быть заполнены!")
         return
 
+    # Проверка, что страницы — это число
+    if not pages.isdigit():
+        messagebox.showwarning("Ошибка", "Количество страниц должно быть числом!")
+        return
+
+    new_book = {
+        "title": title,
+        "author": author,
+        "genre": genre,
+        "pages": int(pages)
+    }
+
+    books.append(new_book)
+    save_data(books)
+    refresh_list(books)
+    
+    # Очистка полей
+    entry_title.delete(0, tk.END)
+    entry_author.delete(0, tk.END)
+    entry_genre.delete(0, tk.END)
+    entry_pages.delete(0, tk.END)
+
+def refresh_list(data_to_display):
+    # Очистка таблицы
+    for item in tree.get_children():
+        tree.delete(item)
+    # Заполнение
+    for book in data_to_display:
+        tree.insert('', tk.END, values=(book['title'], book['author'], book['genre'], book['pages']))
+
+def apply_filter():
+    genre_filter = entry_filter_genre.get().strip().lower()
     try:
-        datetime.strptime(date, '%Y-%m-%d')
+        min_pages = int(entry_filter_pages.get().strip() or 0)
     except ValueError:
-        messagebox.showerror('Ошибка', 'Дата должна быть в формате ГГГГ-ММ-ДД')
-        return
+        min_pages = 0
 
-    expense = {'amount': float(amount), 'category': category, 'date': date}
-    data.append(expense)
-    save_data(data)
-    update_table()
-    clear_inputs()
+    filtered = [
+        b for b in books 
+        if (not genre_filter or genre_filter in b['genre'].lower()) and 
+           (b['pages'] >= min_pages)
+    ]
+    refresh_list(filtered)
 
-def update_table(filter_category=None, filter_date=None):
-    for i in tree.get_children():
-        tree.delete(i)
-    for expense in data:
-        if filter_category and expense['category'] != filter_category:
-            continue
-        if filter_date and expense['date'] != filter_date:
-            continue
-        tree.insert('', 'end', values=(expense['date'], expense['category'], expense['amount']))
+books = load_data()
 
-def filter_expenses():
-    category = combo_filter_category.get() if combo_filter_category.get() else None
-    date = entry_filter_date.get() if entry_filter_date.get() else None
-    update_table(category, date)
-
-def sum_expenses():
-    start_date = entry_start_date.get()
-    end_date = entry_end_date.get()
-
-    try:
-        if start_date:
-            datetime.strptime(start_date, '%Y-%m-%d')
-        if end_date:
-            datetime.strptime(end_date, '%Y-%m-%d')
-    except ValueError:
-        messagebox.showerror('Ошибка', 'Даты должны быть в формате ГГГГ-ММ-ДД')
-        return
-
-    total = sum(
-        e['amount'] for e in data
-        if (not start_date or e['date'] >= start_date)
-        and (not end_date or e['date'] <= end_date)
-    )
-    label_sum.config(text=f'Сумма: {total:.2f} ₽')
-
-def clear_inputs():
-    entry_amount.delete(0, tk.END)
-    combo_category.set('')
-    entry_date.delete(0, tk.END)
-
-# Загрузка данных
-data = load_data()
-
-# Основное окно
 root = tk.Tk()
-root.title('Expense Tracker')
-root.geometry('800x500')
+root.title("Book Tracker")
+root.geometry("700x500")
 
-# Вкладки
-tab_control = ttk.Notebook(root)
-tab_main = ttk.Frame(tab_control)
-tab_filter = ttk.Frame(tab_control)
-tab_sum = ttk.Frame(tab_control)
-tab_control.add(tab_main, text='Добавить расход')
-tab_control.add(tab_filter, text='Фильтр')
-tab_control.add(tab_sum, text='Сумма за период')
-tab_control.pack(expand=1, fill='both')
+# --- Форма ввода ---
+frame_input = ttk.LabelFrame(root, text="Добавить новую книгу")
+frame_input.pack(padx=10, pady=10, fill='x')
 
-# Вкладка "Добавить расход"
-tk.Label(tab_main, text='Сумма:').grid(row=0, column=0, padx=5, pady=5)
-entry_amount = tk.Entry(tab_main)
-entry_amount.grid(row=0, column=1, padx=5, pady=5)
+labels = ["Название:", "Автор:", "Жанр:", "Страниц:"]
+entries = []
 
-tk.Label(tab_main, text='Категория:').grid(row=1, column=0, padx=5, pady=5)
-combo_category = ttk.Combobox(tab_main, values=['Еда', 'Транспорт', 'Развлечения', 'Прочее'])
-combo_category.grid(row=1, column=1, padx=5, pady=5)
+for i, text in enumerate(labels):
+    ttk.Label(frame_input, text=text).grid(row=0, column=i*2, padx=5, pady=5)
+    entry = ttk.Entry(frame_input, width=15)
+    entry.grid(row=0, column=i*2+1, padx=5, pady=5)
+    entries.append(entry)
 
-tk.Label(tab_main, text='Дата (ГГГГ-ММ-ДД):').grid(row=2, column=0, padx=5, pady=5)
-entry_date = tk.Entry(tab_main)
-entry_date.grid(row=2, column=1, padx=5, pady=5)
+entry_title, entry_author, entry_genre, entry_pages = entries
 
-btn_add = tk.Button(tab_main, text='Добавить расход', command=add_expense)
-btn_add.grid(row=3, column=0, columnspan=2, pady=10)
+btn_add = ttk.Button(frame_input, text="Добавить", command=add_book)
+btn_add.grid(row=1, column=0, columnspan=8, pady=10)
 
-# Таблица расходов
-tree = ttk.Treeview(tab_main, columns=('Дата', 'Категория', 'Сумма'), show='headings')
-tree.heading('Дата', text='Дата')
-tree.heading('Категория', text='Категория')
-tree.heading('Сумма', text='Сумма')
-tree.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky='nsew')
+# --- Блок фильтрации ---
+frame_filter = ttk.LabelFrame(root, text="Фильтрация")
+frame_filter.pack(padx=10, pady=5, fill='x')
 
-# Вкладка "Фильтр"
-tk.Label(tab_filter, text='Категория:').grid(row=0, column=0, padx=5, pady=5)
-combo_filter_category = ttk.Combobox(tab_filter, values=['Все', 'Еда', 'Транспорт', 'Развлечения', 'Прочее'])
-combo_filter_category.set('Все')
-combo_filter_category.grid(row=0, column=1, padx=5, pady=5)
+ttk.Label(frame_filter, text="Жанр:").grid(row=0, column=0, padx=5)
+entry_filter_genre = ttk.Entry(frame_filter)
+entry_filter_genre.grid(row=0, column=1, padx=5)
 
-tk.Label(tab_filter, text='Дата (ГГГГ-ММ-ДД):').grid(row=1, column=0, padx=5, pady=5)
-entry_filter_date = tk.Entry(tab_filter)
-entry_filter_date.grid(row=1, column=1, padx=5, pady=5)
+ttk.Label(frame_filter, text="Мин. страниц:").grid(row=0, column=2, padx=5)
+entry_filter_pages = ttk.Entry(frame_filter)
+entry_filter_pages.grid(row=0, column=3, padx=5)
 
-btn_filter = tk.Button(tab_filter, text='Применить фильтр', command=filter_expenses)
-btn_filter.grid(row=2, column=0, columnspan=2, pady=10)
+btn_filter = ttk.Button(frame_filter, text="Применить", command=apply_filter)
+btn_filter.grid(row=0, column=4, padx=10)
 
-# Вкладка "Сумма за период"
-tk.Label(tab_sum, text='С:').grid(row=0, column=0, padx=5, pady=5)
-entry_start_date = tk.Entry(tab_sum)
-entry_start_date.grid(row=0, column=1, padx=5, pady=5)
+btn_reset = ttk.Button(frame_filter, text="Сброс", command=lambda: refresh_list(books))
+btn_reset.grid(row=0, column=5, padx=5)
 
-tk.Label(tab_sum, text='По:').grid(row=1, column=0, padx=5, pady=5)
-entry_end_date = tk.Entry(tab_sum)
-entry_end_date.grid(row=1, column=1, padx=5, pady=5)
+# --- Таблица вывода ---
+columns = ('title', 'author', 'genre', 'pages')
+tree = ttk.Treeview(root, columns=columns, show='headings')
+tree.heading('title', text='Название')
+tree.heading('author', text='Автор')
+tree.heading('genre', text='Жанр')
+tree.heading('pages', text='Стр.')
 
-btn_sum = tk.Button(tab_sum, text='Посчитать сумму', command=sum_expenses)
-btn_sum.grid(row=2, column=0, columnspan=2, pady=10)
+tree.column('pages', width=50)
+tree.pack(padx=10, pady=10, fill='both', expand=True)
 
-label_sum = tk.Label(tab_sum, text='Сумма: 0.00 ₽')
-label_sum.grid(row=3, column=0, columnspan=2, pady=10)
-
-# Заполнение таблицы при запуске
-update_table()
-
+refresh_list(books)
 root.mainloop()
